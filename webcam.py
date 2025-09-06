@@ -146,6 +146,10 @@ def gen_frames():
         else:
             continue
 
+@app.route('/')
+def index():
+    return flask.send_file('index.html')
+
 @app.route('/video')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
