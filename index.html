@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Finger Paint Webcam</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #222; color: #eee; text-align: center; }
+        #video-area { width: 640px; height: 480px; background: #444; margin: 20px auto; border-radius: 10px; }
+        .controls { margin: 20px; }
+        button { padding: 10px 20px; margin: 0 10px; font-size: 16px; border-radius: 5px; border: none; background: #555; color: #fff; cursor: pointer; }
+        button:hover { background: #888; }
+        #mode { font-size: 20px; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Finger Paint Webcam</h1>
+    <div id="video-area">
+        <img id="video-stream" src="http://localhost:5000/video" width="640" height="480" style="border-radius:10px;">
+    </div>
+    <div id="mode">Mode: Idle</div>
+    <div class="controls">
+        <button id="clear-btn">Clear</button>
+        <button id="color-btn">Change Color</button>
+        <button id="quit-btn">Quit</button>
+    </div>
+    <script>
+        function updateMode() {
+            fetch('http://localhost:5000/mode')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('mode').textContent = 'Mode: ' + data.mode;
+                });
+        }
+        setInterval(updateMode, 500);
+
+        document.getElementById('clear-btn').onclick = function() {
+            fetch('http://localhost:5000/clear', {method: 'POST'});
+        };
+        document.getElementById('color-btn').onclick = function() {
+            fetch('http://localhost:5000/color', {method: 'POST'});
+        };
+        document.getElementById('quit-btn').onclick = function() {
+            fetch('http://localhost:5000/quit', {method: 'POST'});
+        };
+    </script>
+</body>
+</html>
