@@ -153,10 +153,6 @@ def gen_frames():
         import time
         time.sleep(0.1)  # Add small delay to prevent high CPU usage
 
-@app.route('/')
-def index():
-    return flask.send_file('index.html')
-
 @app.route('/video')
 def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -187,6 +183,10 @@ def quit_app():
     if fp:
         fp.stop()
     return '', 204
+
+@app.route('/health')
+def health_check():
+    return flask.jsonify({'status': 'Backend running', 'mode': fp.mode if fp else 'Idle'})
 
 def run_flask():
     app.run(host='0.0.0.0', port=5000, threaded=True)

@@ -49,8 +49,20 @@
 </head>
 <body>
     <h1>Finger Paint Webcam Interface</h1>
+    
+    <!-- Backend URL Configuration -->
+    <div style="margin: 10px;">
+        <label for="backend-url">Backend URL:</label>
+        <input type="text" id="backend-url" placeholder="Enter backend URL (e.g., https://your-app.onrender.com)" 
+               style="width: 400px; padding: 5px; margin: 5px;">
+        <button onclick="connectToBackend()">Connect</button>
+    </div>
+    
     <div id="video-container">
-        <img src="https://writing-with-fingers-webcam-5.onrender.com/video" alt="Finger Paint Webcam Feed" />
+        <img id="video-stream" src="" alt="Finger Paint Webcam Feed" style="display:none;" />
+        <div id="no-connection" style="padding: 200px 0; color: #666;">
+            Enter backend URL and click Connect
+        </div>
     </div>
     <div id="mode">Mode: Idle</div>
     <div class="controls">
@@ -67,25 +79,55 @@
         <li>5 fingers: Undo last line</li>
     </ul>
     <script>
-        const BACKEND_URL = 'https://writing-with-fingers-webcam-5.onrender.com';
+        let BACKEND_URL = '';
+        let isConnected = false;
+        
+        function connectToBackend() {
+            const input = document.getElementById('backend-url');
+            BACKEND_URL = input.value.trim();
+            
+            if (!BACKEND_URL) {
+                alert('Please enter a backend URL');
+                return;
+            }
+            
+            // Remove trailing slash
+            BACKEND_URL = BACKEND_URL.replace(/\/$/, '');
+            
+            // Update video stream
+            document.getElementById('video-stream').src = `${BACKEND_URL}/video`;
+            document.getElementById('video-stream').style.display = 'block';
+            document.getElementById('no-connection').style.display = 'none';
+            
+            isConnected = true;
+            updateMode(); // Start polling
+        }
         
         function updateMode() {
+            if (!isConnected) return;
+            
             fetch(`${BACKEND_URL}/mode`)
                 .then(res => res.json())
                 .then(data => {
                     document.getElementById('mode').textContent = 'Mode: ' + data.mode;
                 })
-                .catch(err => console.error('Error fetching mode:', err));
+                .catch(err => {
+                    console.error('Error fetching mode:', err);
+                    document.getElementById('mode').textContent = 'Mode: Connection Error';
+                });
         }
         setInterval(updateMode, 500);
 
         document.getElementById('clear-btn').onclick = function() {
+            if (!isConnected) { alert('Please connect to backend first'); return; }
             fetch(`${BACKEND_URL}/clear`, {method: 'POST'});
         };
         document.getElementById('color-btn').onclick = function() {
+            if (!isConnected) { alert('Please connect to backend first'); return; }
             fetch(`${BACKEND_URL}/color`, {method: 'POST'});
         };
         document.getElementById('quit-btn').onclick = function() {
+            if (!isConnected) { alert('Please connect to backend first'); return; }
             fetch(`${BACKEND_URL}/quit`, {method: 'POST'});
         };
     </script>
