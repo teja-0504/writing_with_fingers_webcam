@@ -5,7 +5,6 @@ import mediapipe as mp
 import numpy as np
 import time
 import os
-import threading
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests
