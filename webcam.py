@@ -58,79 +58,85 @@ class FingerPaint:
         while self.running:
             ret, frame = self.cap.read()
             if not ret:
-                break
-
-            frame = cv2.flip(frame, 1)
-            if self.canvas is None:
+                # Create a fallback frame when no camera is available
+                frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(frame, "No Camera Available", (150, 240), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
                 self.canvas = np.zeros_like(frame)
-
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            result = self.hands.process(rgb_frame)
-
-            if result.multi_hand_landmarks:
-                for hand_landmarks in result.multi_hand_landmarks:
-                    self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
-
-                    fingers = self.fingers_up(hand_landmarks)
-                    self.total_fingers = fingers.count(True)
-
-                    h, w, c = frame.shape
-                    index_finger_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
-                    x, y = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
-
-                    cv2.putText(frame, f'Fingers: {self.total_fingers}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
-                                1.5, (255, 0, 0), 3)
-
-                    if self.total_fingers == 1:
-                        self.mode = "Drawing"
-                        if self.prev_x is not None and self.prev_y is not None:
-                            line = ((self.prev_x, self.prev_y), (x, y), self.colors[self.color_index])
-                            cv2.line(self.canvas, (self.prev_x, self.prev_y), (x, y), self.colors[self.color_index], 5)
-                            self.lines.append(line)
-                        self.prev_x, self.prev_y = x, y
-                    elif self.total_fingers == 2:
-                        self.mode = "Moving"
-                        self.prev_x, self.prev_y = x, y
-                    elif self.total_fingers == 3:
-                        self.mode = "Color Change"
-                        self.color_index = (self.color_index + 1) % len(self.colors)
-                        cv2.putText(frame, f'Color Changed', (10, 110), cv2.FONT_HERSHEY_SIMPLEX,
-                                    1.2, self.colors[self.color_index], 3)
-                        self.prev_x, self.prev_y = None, None
-                    elif self.total_fingers == 5:
-                        self.mode = "Erasing Line"
-                        if self.lines:
-                            self.lines.pop()
-                            self.canvas = np.zeros_like(frame)
-                            for line in self.lines:
-                                cv2.line(self.canvas, line[0], line[1], line[2], 5)
-                        self.prev_x, self.prev_y = None, None
-                    elif self.total_fingers == 4:
-                        self.mode = "Clear Canvas"
-                        self.canvas = np.zeros_like(frame)
-                        self.lines.clear()
-                        self.prev_x, self.prev_y = None, None
-                    else:
-                        self.mode = "Idle"
-                        self.prev_x, self.prev_y = None, None
-            else:
-                self.mode = "Idle"
                 self.prev_x, self.prev_y = None, None
+                self.mode = "Idle"
+            else:
+                frame = cv2.flip(frame, 1)
+                if self.canvas is None:
+                    self.canvas = np.zeros_like(frame)
 
-            combined = cv2.addWeighted(frame, 0.5, self.canvas, 0.5, 0)
-            cv2.putText(combined, f'Mode: {self.mode}', (10, 150), cv2.FONT_HERSHEY_SIMPLEX,
-                        1.2, (0, 255, 255), 3)
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                result = self.hands.process(rgb_frame)
 
-            self.frame = combined
-            cv2.imshow("Finger Paint - Press 'c' to clear, 'q' to quit", combined)
+                if result.multi_hand_landmarks:
+                    for hand_landmarks in result.multi_hand_landmarks:
+                        self.mp_draw.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('c'):
-                self.canvas = np.zeros_like(frame)
-                self.lines.clear()
-            elif key == ord('q'):
-                self.stop()
-                break
+                        fingers = self.fingers_up(hand_landmarks)
+                        self.total_fingers = fingers.count(True)
+
+                        h, w, c = frame.shape
+                        index_finger_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                        x, y = int(index_finger_tip.x * w), int(index_finger_tip.y * h)
+
+                        cv2.putText(frame, f'Fingers: {self.total_fingers}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
+                                    1.5, (255, 0, 0), 3)
+
+                        if self.total_fingers == 1:
+                            self.mode = "Drawing"
+                            if self.prev_x is not None and self.prev_y is not None:
+                                line = ((self.prev_x, self.prev_y), (x, y), self.colors[self.color_index])
+                                cv2.line(self.canvas, (self.prev_x, self.prev_y), (x, y), self.colors[self.color_index], 5)
+                                self.lines.append(line)
+                            self.prev_x, self.prev_y = x, y
+                        elif self.total_fingers == 2:
+                            self.mode = "Moving"
+                            self.prev_x, self.prev_y = x, y
+                        elif self.total_fingers == 3:
+                            self.mode = "Color Change"
+                            self.color_index = (self.color_index + 1) % len(self.colors)
+                            cv2.putText(frame, f'Color Changed', (10, 110), cv2.FONT_HERSHEY_SIMPLEX,
+                                        1.2, self.colors[self.color_index], 3)
+                            self.prev_x, self.prev_y = None, None
+                        elif self.total_fingers == 5:
+                            self.mode = "Erasing Line"
+                            if self.lines:
+                                self.lines.pop()
+                                self.canvas = np.zeros_like(frame)
+                                for line in self.lines:
+                                    cv2.line(self.canvas, line[0], line[1], line[2], 5)
+                            self.prev_x, self.prev_y = None, None
+                        elif self.total_fingers == 4:
+                            self.mode = "Clear Canvas"
+                            self.canvas = np.zeros_like(frame)
+                            self.lines.clear()
+                            self.prev_x, self.prev_y = None, None
+                        else:
+                            self.mode = "Idle"
+                            self.prev_x, self.prev_y = None, None
+                else:
+                    self.mode = "Idle"
+                    self.prev_x, self.prev_y = None, None
+
+                combined = cv2.addWeighted(frame, 0.5, self.canvas, 0.5, 0)
+                cv2.putText(combined, f'Mode: {self.mode}', (10, 150), cv2.FONT_HERSHEY_SIMPLEX,
+                            1.2, (0, 255, 255), 3)
+
+                self.frame = combined
+                cv2.imshow("Finger Paint - Press 'c' to clear, 'q' to quit", combined)
+
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('c'):
+                    self.canvas = np.zeros_like(frame)
+                    self.lines.clear()
+                elif key == ord('q'):
+                    self.stop()
+                    break
 
 app = Flask(__name__)
 fp = None
@@ -140,11 +146,12 @@ def gen_frames():
     while fp and fp.running:
         if fp.frame is not None:
             ret, buffer = cv2.imencode('.jpg', fp.frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-        else:
-            continue
+            if ret:
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        import time
+        time.sleep(0.1)  # Add small delay to prevent high CPU usage
 
 @app.route('/')
 def index():
