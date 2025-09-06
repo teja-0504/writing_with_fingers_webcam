@@ -189,12 +189,7 @@ def generate_frames():
 
 @app.route('/')
 def index():
-    # Return a simple API status instead of trying to serve HTML
-    return jsonify({
-        'status': 'Finger Drawing API is running',
-        'endpoints': ['/video', '/mode', '/clear', '/color', '/health'],
-        'frontend': 'https://teja-0504.github.io/writing_with_fingers_webcam/'
-    })
+    return send_from_directory('.', 'index.html')
 
 @app.route('/video')
 def video_feed():
@@ -234,17 +229,6 @@ def set_mode():
     data = request.get_json()
     mode = data.get('mode', 'none')
     return 'OK'
-
-@app.route('/<path:filename>')
-def serve_static(filename):
-    return send_from_directory('.', filename)
-
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    def shutdown_server():
-        os.kill(os.getpid(), signal.SIGINT)
-    threading.Thread(target=shutdown_server).start()
-    return 'Server shutting down...'
 
 if __name__ == '__main__':
     # Get port from environment variable (Render sets this)
