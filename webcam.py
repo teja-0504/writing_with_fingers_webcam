@@ -1,4 +1,5 @@
 from flask import Flask, Response, request
+from flask_cors import CORS
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -6,6 +7,7 @@ import time
 import flask
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Initialize MediaPipe Hands.
 mp_hands = mp.solutions.hands
