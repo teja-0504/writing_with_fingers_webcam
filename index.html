@@ -1,21 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Finger Paint Webcam</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Finger Paint Webcam Interface</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #222; color: #eee; text-align: center; }
-        #video-area { width: 640px; height: 480px; background: #444; margin: 20px auto; border-radius: 10px; }
-        .controls { margin: 20px; }
-        button { padding: 10px 20px; margin: 0 10px; font-size: 16px; border-radius: 5px; border: none; background: #555; color: #fff; cursor: pointer; }
-        button:hover { background: #888; }
-        #mode { font-size: 20px; margin: 10px; }
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            margin-top: 20px;
+        }
+        #video-container {
+            margin: 20px auto;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #333;
+            background-color: #000;
+        }
+        img {
+            width: 100%;
+            height: auto;
+        }
+        #mode {
+            font-size: 18px;
+            margin: 10px;
+            font-weight: bold;
+        }
+        .controls {
+            margin: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: none;
+            background: #555;
+            color: #fff;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #888;
+        }
     </style>
 </head>
 <body>
-    <h1>Finger Paint Webcam</h1>
-    <div id="video-area">
-        <img id="video-stream" src="http://localhost:5000/video" width="640" height="480" style="border-radius:10px;">
+    <h1>Finger Paint Webcam Interface</h1>
+    <div id="video-container">
+        <img src="https://writing-with-fingers-webcam-5.onrender.com/video" alt="Finger Paint Webcam Feed" />
     </div>
     <div id="mode">Mode: Idle</div>
     <div class="controls">
@@ -23,24 +58,35 @@
         <button id="color-btn">Change Color</button>
         <button id="quit-btn">Quit</button>
     </div>
+    <p>Use your fingers to draw on the canvas:</p>
+    <ul style="list-style-type:none;">
+        <li>1 finger: Draw</li>
+        <li>2 fingers: Move cursor</li>
+        <li>3 fingers: Change color</li>
+        <li>4 fingers: Clear canvas</li>
+        <li>5 fingers: Undo last line</li>
+    </ul>
     <script>
+        const BACKEND_URL = 'https://writing-with-fingers-webcam-5.onrender.com';
+        
         function updateMode() {
-            fetch('http://localhost:5000/mode')
+            fetch(`${BACKEND_URL}/mode`)
                 .then(res => res.json())
                 .then(data => {
                     document.getElementById('mode').textContent = 'Mode: ' + data.mode;
-                });
+                })
+                .catch(err => console.error('Error fetching mode:', err));
         }
         setInterval(updateMode, 500);
 
         document.getElementById('clear-btn').onclick = function() {
-            fetch('http://localhost:5000/clear', {method: 'POST'});
+            fetch(`${BACKEND_URL}/clear`, {method: 'POST'});
         };
         document.getElementById('color-btn').onclick = function() {
-            fetch('http://localhost:5000/color', {method: 'POST'});
+            fetch(`${BACKEND_URL}/color`, {method: 'POST'});
         };
         document.getElementById('quit-btn').onclick = function() {
-            fetch('http://localhost:5000/quit', {method: 'POST'});
+            fetch(`${BACKEND_URL}/quit`, {method: 'POST'});
         };
     </script>
 </body>
