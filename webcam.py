@@ -1,8 +1,11 @@
-from flask import Flask, render_template, Response, request
+from flask import Flask, render_template, Response, request, send_from_directory
 import cv2
 import mediapipe as mp
 import numpy as np
 import time
+import os
+import signal
+import threading
 
 app = Flask(__name__)
 
@@ -167,7 +170,7 @@ def generate_frames():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return send_from_directory('.', 'index.html')
 
 @app.route('/video_feed')
 def video_feed():
@@ -180,11 +183,9 @@ def set_mode():
     mode = data.get('mode', 'none')
     return 'OK'
 
-from flask import request
-
-import os
-import signal
-import threading
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('.', filename)
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
