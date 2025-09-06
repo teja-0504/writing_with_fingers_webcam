@@ -95,11 +95,13 @@
             <label for="backend-url">Backend URL:</label>
             <input type="url" id="backend-url" placeholder="https://your-app.onrender.com" value="">
             <button onclick="connectToBackend()">Connect</button>
+            <button onclick="disconnectFromBackend()">Disconnect</button>
         </div>
 
         <div id="status" class="status">Not connected</div>
         
-        <img id="video-stream" src="" alt="Video stream will appear here" style="display: none;">
+        <img id="video-stream" src="" alt="Video stream will appear here" style="display: none;" 
+             onerror="handleVideoError()" onload="handleVideoLoad()">
         
         <div class="controls">
             <button onclick="clearCanvas()">Clear Canvas</button>
@@ -126,6 +128,8 @@
     <script>
         let backendUrl = '';
         let modeCheckInterval;
+        let connectionTimeout = 10000; // 10 seconds
+        let isConnected = false;
 
         function connectToBackend() {
             const urlInput = document.getElementById('backend-url');
@@ -139,23 +143,85 @@
             // Remove trailing slash if present
             backendUrl = backendUrl.replace(/\/$/, '');
 
-            // Test connection
-            checkHealth().then(() => {
-                // Start video stream
-                const videoElement = document.getElementById('video-stream');
-                videoElement.src = `${backendUrl}/video`;
-                videoElement.style.display = 'block';
-                
-                // Start mode checking
-                if (modeCheckInterval) {
-                    clearInterval(modeCheckInterval);
+            // Validate URL format
+            try {
+                new URL(backendUrl);
+            } catch (e) {
+                updateStatus('Invalid URL format', 'error');
+                return;
+            }
+
+            updateStatus('Connecting...', 'connected');
+
+            // Test connection with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), connectionTimeout);
+
+            checkHealth(controller.signal)
+                .then(() => {
+                    clearTimeout(timeoutId);
+                    isConnected = true;
+                    
+                    // Start video stream with error handling
+                    const videoElement = document.getElementById('video-stream');
+                    videoElement.src = `${backendUrl}/video`;
+                    videoElement.style.display = 'block';
+                    
+                    // Start mode checking
+                    if (modeCheckInterval) {
+                        clearInterval(modeCheckInterval);
+                    }
+                    modeCheckInterval = setInterval(updateMode, 2000); // Increased interval
+                    
+                    updateStatus('Connected successfully', 'connected');
+                })
+                .catch((error) => {
+                    clearTimeout(timeoutId);
+                    isConnected = false;
+                    if (error.name === 'AbortError') {
+                        updateStatus('Connection timeout', 'error');
+                    } else {
+                        updateStatus('Failed to connect to backend', 'error');
+                    }
+                    console.error('Connection error:', error);
+                });
+        }
+
+        function disconnectFromBackend() {
+            isConnected = false;
+            backendUrl = '';
+            
+            // Clear intervals
+            if (modeCheckInterval) {
+                clearInterval(modeCheckInterval);
+                modeCheckInterval = null;
+            }
+            
+            // Hide video stream
+            const videoElement = document.getElementById('video-stream');
+            videoElement.src = '';
+            videoElement.style.display = 'none';
+            
+            // Reset mode display
+            document.getElementById('current-mode').textContent = 'Unknown';
+            
+            updateStatus('Disconnected', 'error');
+        }
+
+        function handleVideoError() {
+            updateStatus('Video stream error - retrying connection', 'error');
+            setTimeout(() => {
+                if (isConnected && backendUrl) {
+                    const videoElement = document.getElementById('video-stream');
+                    videoElement.src = `${backendUrl}/video?t=${Date.now()}`;
                 }
-                modeCheckInterval = setInterval(updateMode, 1000);
-                
-                updateStatus('Connected successfully', 'connected');
-            }).catch(() => {
-                updateStatus('Failed to connect to backend', 'error');
-            });
+            }, 3000);
+        }
+
+        function handleVideoLoad() {
+            if (isConnected) {
+                updateStatus('Video stream loaded successfully', 'connected');
+            }
         }
 
         function updateStatus(message, type) {
@@ -165,81 +231,134 @@
         }
 
         function clearCanvas() {
-            if (!backendUrl) {
+            if (!backendUrl || !isConnected) {
                 updateStatus('Please connect to backend first', 'error');
                 return;
             }
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
             fetch(`${backendUrl}/clear`, {
                 method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
             })
             .then(response => {
+                clearTimeout(timeoutId);
                 if (response.ok) {
                     updateStatus('Canvas cleared', 'connected');
                 } else {
-                    throw new Error('Clear failed');
+                    throw new Error(`Clear failed: ${response.status}`);
                 }
             })
             .catch(error => {
-                updateStatus('Failed to clear canvas', 'error');
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    updateStatus('Clear request timeout', 'error');
+                } else {
+                    updateStatus('Failed to clear canvas', 'error');
+                }
                 console.error('Error:', error);
             });
         }
 
         function changeColor() {
-            if (!backendUrl) {
+            if (!backendUrl || !isConnected) {
                 updateStatus('Please connect to backend first', 'error');
                 return;
             }
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
             fetch(`${backendUrl}/color`, {
                 method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
             })
             .then(response => {
+                clearTimeout(timeoutId);
                 if (response.ok) {
                     updateStatus('Color changed', 'connected');
                 } else {
-                    throw new Error('Color change failed');
+                    throw new Error(`Color change failed: ${response.status}`);
                 }
             })
             .catch(error => {
-                updateStatus('Failed to change color', 'error');
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    updateStatus('Color change request timeout', 'error');
+                } else {
+                    updateStatus('Failed to change color', 'error');
+                }
                 console.error('Error:', error);
             });
         }
 
-        function checkHealth() {
+        function checkHealth(signal = null) {
             if (!backendUrl) {
                 return Promise.reject('No backend URL');
             }
 
-            return fetch(`${backendUrl}/health`)
+            const fetchOptions = {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            };
+
+            if (signal) {
+                fetchOptions.signal = signal;
+            }
+
+            return fetch(`${backendUrl}/health`, fetchOptions)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Health check failed');
+                        throw new Error(`Health check failed: ${response.status}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    updateStatus(`Backend: ${data.status}`, 'connected');
+                    if (isConnected) {
+                        updateStatus(`Backend: ${data.status}`, 'connected');
+                    }
                     return data;
                 })
                 .catch(error => {
-                    updateStatus('Backend not responding', 'error');
+                    if (isConnected) {
+                        updateStatus('Backend not responding', 'error');
+                        isConnected = false;
+                    }
                     throw error;
                 });
         }
 
         function updateMode() {
-            if (!backendUrl) return;
+            if (!backendUrl || !isConnected) return;
 
-            fetch(`${backendUrl}/mode`)
-                .then(response => response.json())
+            fetch(`${backendUrl}/mode`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Mode check failed: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     document.getElementById('current-mode').textContent = data.mode;
                 })
                 .catch(error => {
                     console.error('Mode update error:', error);
+                    document.getElementById('current-mode').textContent = 'Error';
                 });
         }
 
@@ -247,6 +366,22 @@
         if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
             document.getElementById('backend-url').value = 'http://localhost:5000';
         }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (modeCheckInterval) {
+                clearInterval(modeCheckInterval);
+            }
+        });
+
+        // Handle visibility change to pause/resume when tab is not active
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && modeCheckInterval) {
+                clearInterval(modeCheckInterval);
+            } else if (!document.hidden && isConnected && backendUrl) {
+                modeCheckInterval = setInterval(updateMode, 2000);
+            }
+        });
     </script>
 </body>
 </html>
