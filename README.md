@@ -1,3 +1,5 @@
+priject-https://teja-0504.github.io/writing_with_fingers_webcam/
+activation link-https://writing-with-fingers-webcam-5.onrender.com
 # Finger Paint Webcam
 
 A real-time finger painting application using computer vision and hand tracking. Draw in the air using your fingers and see your creations on screen!
