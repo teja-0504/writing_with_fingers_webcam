@@ -36,14 +36,14 @@
 <body>
     <h1>Finger Paint Webcam Interface</h1>
     <div id="video-container">
-        <img src="/video" alt="Finger Paint Webcam Feed" />
+        <img id="video-stream" src="" alt="Finger Paint Webcam Feed" />
     </div>
     
     <div style="margin: 20px;">
         <button onclick="clearCanvas()">Clear Canvas</button>
         <button onclick="changeColor()">Change Color</button>
         <button onclick="checkHealth()">Check Status</button>
-        <button id="quit-btn">Quit</button>
+        <button onclick="connectToBackend()">Connect</button>
     </div>
 
     <p>Use your fingers to draw on the canvas:</p>
@@ -56,12 +56,37 @@
     </ul>
     
     <div id="status">
-        Status: <span id="current-status">Loading...</span>
+        Status: <span id="current-status">Connecting to backend...</span>
     </div>
 
     <script>
+        const BACKEND_URL = 'https://writing-with-fingers-webcam-5.onrender.com';
+        let isConnected = false;
+
+        function connectToBackend() {
+            document.getElementById('current-status').textContent = 'Connecting...';
+            
+            fetch(`${BACKEND_URL}/health`)
+                .then(response => response.json())
+                .then(data => {
+                    isConnected = true;
+                    document.getElementById('video-stream').src = `${BACKEND_URL}/video`;
+                    document.getElementById('current-status').textContent = 'Connected to backend';
+                })
+                .catch(error => {
+                    isConnected = false;
+                    document.getElementById('current-status').textContent = 'Failed to connect to backend';
+                    console.error('Connection error:', error);
+                });
+        }
+
         function clearCanvas() {
-            fetch('/clear', { method: 'POST' })
+            if (!isConnected) {
+                document.getElementById('current-status').textContent = 'Please connect to backend first';
+                return;
+            }
+            
+            fetch(`${BACKEND_URL}/clear`, { method: 'POST' })
                 .then(response => {
                     if (response.ok) {
                         document.getElementById('current-status').textContent = 'Canvas cleared';
@@ -70,7 +95,12 @@
         }
 
         function changeColor() {
-            fetch('/color', { method: 'POST' })
+            if (!isConnected) {
+                document.getElementById('current-status').textContent = 'Please connect to backend first';
+                return;
+            }
+            
+            fetch(`${BACKEND_URL}/color`, { method: 'POST' })
                 .then(response => {
                     if (response.ok) {
                         document.getElementById('current-status').textContent = 'Color changed';
@@ -79,24 +109,21 @@
         }
 
         function checkHealth() {
-            fetch('/health')
+            fetch(`${BACKEND_URL}/health`)
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('current-status').textContent = data.status;
+                    isConnected = true;
+                })
+                .catch(error => {
+                    document.getElementById('current-status').textContent = 'Backend not responding';
+                    isConnected = false;
                 });
         }
 
-        document.getElementById('quit-btn').addEventListener('click', function() {
-            fetch('/quit', {
-                method: 'POST'
-            }).then(() => {
-                window.close();
-            });
-        });
-
-        // Initialize
+        // Auto-connect on page load
         window.addEventListener('DOMContentLoaded', function() {
-            checkHealth();
+            connectToBackend();
         });
     </script>
 </body>
