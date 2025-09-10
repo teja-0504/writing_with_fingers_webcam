@@ -1,4 +1,4 @@
-project-https://teja-0504.github.io/writing_with_fingers_webcam/                                                                                    
+project-https:/[writing_with_fingers_webcam/](https://teja-0504.github.io/writing_with_fingers_webcam/templates/)                                                                                    
 activation link-https://writing-with-fingers-webcam-5.onrender.com
 # Finger Paint Webcam
 
