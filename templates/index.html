@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finger Painting with Hand Tracking</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .video-container {
+            position: relative;
+            display: inline-block;
+            border: 3px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #000;
+        }
+        #videoElement {
+            width: 640px;
+            height: 480px;
+            display: block;
+            /* Horizontal flip for mirror-like behavior */
+            transform: scaleX(-1);
+        }
+        #canvasElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 640px;
+            height: 480px;
+            pointer-events: none;
+            /* Horizontal flip to match video */
+            transform: scaleX(-1);
+        }
+        #paintCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 640px;
+            height: 480px;
+            pointer-events: none;
+        }
+        .instructions {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .gesture-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .gesture-item {
+            padding: 8px;
+            background-color: #e8f4f8;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.demo {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status.camera {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .current-mode {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #d1ecf1;
+            border-radius: 5px;
+            font-weight: bold;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Finger Painting with Hand Tracking</h1>
+        
+        <div class="instructions">
+            <h3>Right Hand Gesture Controls:</h3>
+            <p><strong>Use your RIGHT HAND ONLY</strong> - Hand will appear in blue</p>
+            <div class="gesture-list">
+                <div class="gesture-item">👆 1 Finger: Move Mode</div>
+                <div class="gesture-item">✌️ 2 Fingers: Drawing Mode</div>
+                <div class="gesture-item">🤟 3 Fingers: Change Color (Hold 1 second)</div>
+                <div class="gesture-item">🖖 4 Fingers: Clear All</div>
+                <div class="gesture-item">🖐️ 5 Fingers: Undo Last Line</div>
+            </div>
+        </div>
+
+        <div class="video-container">
+            <video id="videoElement" autoplay muted playsinline></video>
+            <canvas id="canvasElement"></canvas>
+            <canvas id="paintCanvas"></canvas>
+        </div>
+
+        <div class="current-mode" id="currentMode">
+            Current Mode: Ready
+        </div>
+
+        <div class="controls">
+            <button onclick="clearAll()">Clear All</button>
+            <button onclick="undoLastLine()">Undo Last Line</button>
+            <button onclick="saveDrawing()">Save Drawing</button>
+            <button onclick="toggleCamera()">Toggle Camera</button>
+            <p><strong>Press 'Q' to quit the application | Press 'S' to save</strong></p>
+        </div>
+
+        <div class="status camera" id="status">
+            Initializing camera...
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let hands, camera;
+        let videoElement, canvasElement, canvasCtx, paintCanvas, paintCtx;
+        let currentMode = 'ready';
+        let isDrawing = false;
+        let lastPoint = null;
+        let cameraActive = false;
+
+        // Gesture modes
+        const GESTURE_MODES = {
+            1: { name: 'Move', color: '', size: 0 },
+            2: { name: 'Drawing', color: '#FF0000', size: 3 },
+            3: { name: 'Change Color (Hold 1sec)', color: '', size: 0 },
+            4: { name: 'Clear All', color: '', size: 0 },
+            5: { name: 'Undo Last Line', color: '', size: 0 }
+        };
+
+        // Application configuration (will be loaded from server)
+        let APP_CONFIG = null;
+        let DRAWING_COLORS = [];
+        
+        let currentColorIndex = 0;
+        let drawnLines = []; // Store all drawn lines for undo functionality
+        let currentLine = []; // Current line being drawn
+        
+        // Color change timer
+        let colorChangeTimer = null;
+        let colorChangeStartTime = null;
+        let isColorChangeInProgress = false;
+        
+        // Right hand only support
+        let rightHandPoint = null;
+        let rightHandMode = 'ready';
+
+        // Initialize everything when page loads
+        window.addEventListener('load', initializeApp);
+
+        async function loadConfiguration() {
+            try {
+                const response = await fetch('/api/config');
+                APP_CONFIG = await response.json();
+                
+                // Extract colors from server config
+                DRAWING_COLORS = APP_CONFIG.colors.map(color => color.value);
+                
+                console.log('Configuration loaded from server:', APP_CONFIG);
+                return true;
+            } catch (error) {
+                console.error('Failed to load configuration, using defaults:', error);
+                // Fallback to default colors
+                DRAWING_COLORS = [
+                    '#FF0000', // Red
+                    '#0000FF', // Blue
+                    '#00FF00', // Green
+                    '#800080', // Purple
+                    '#FFA500', // Orange
+                    '#FFD700', // Gold
+                    '#FF69B4', // Pink
+                    '#000000'  // Black
+                ];
+                return false;
+            }
+        }
+
+        async function initializeApp() {
+            // Load configuration from server first
+            await loadConfiguration();
+            
+            videoElement = document.getElementById('videoElement');
+            canvasElement = document.getElementById('canvasElement');
+            canvasCtx = canvasElement.getContext('2d');
+            paintCanvas = document.getElementById('paintCanvas');
+            paintCtx = paintCanvas.getContext('2d');
+
+            // Set canvas dimensions
+            canvasElement.width = 640;
+            canvasElement.height = 480;
+            paintCanvas.width = 640;
+            paintCanvas.height = 480;
+
+            // Initialize MediaPipe Hands
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            // Use server configuration or defaults
+            const detectionSettings = APP_CONFIG?.detection_settings || {
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            };
+
+            hands.setOptions(detectionSettings);
+
+            hands.onResults(onResults);
+
+            // Initialize camera
+            initializeCamera();
+        }
+
+        function initializeCamera() {
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (cameraActive) {
+                        await hands.send({image: videoElement});
+                    }
+                },
+                width: 640,
+                height: 480
+            });
+
+            camera.start().then(() => {
+                cameraActive = true;
+                updateStatus('Camera active - Show your hand!', 'camera');
+            }).catch((error) => {
+                console.error('Camera error:', error);
+                updateStatus('Camera not available - Check permissions', 'demo');
+            });
+        }
+
+        function onResults(results) {
+            // Clear the canvas
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Reset hand tracking
+            rightHandPoint = null;
+            rightHandMode = 'ready';
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const handedness = results.multiHandedness[i];
+                    // Swap left/right to match user's perspective in mirrored video
+                    const label = handedness.label === 'Left' ? 'Right' : 'Left';
+                    
+                    // Only process right hand
+                    if (label === 'Right') {
+                        // Draw hand landmarks in blue for right hand
+                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#0000FF', lineWidth: 2});
+                        drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
+
+                        // Detect gesture and handle painting
+                        const fingerCount = countFingers(landmarks);
+                        
+                        // Display finger count on canvas for debugging
+                        // Save current transform
+                        canvasCtx.save();
+                        // Reset scale to normal for text (counter the flip)
+                        canvasCtx.scale(-1, 1);
+                        canvasCtx.fillStyle = '#FFFF00'; // Yellow text
+                        canvasCtx.font = 'bold 24px Arial';
+                        // Draw text at flipped position (-640 + 10 = -630)
+                        canvasCtx.fillText(`Fingers: ${fingerCount}`, -630, 30);
+                        // Restore transform
+                        canvasCtx.restore();
+                        
+                        handleGesture(fingerCount, landmarks);
+                        break; // Only process the first right hand found
+                    }
+                }
+                
+                // If no right hand detected, show message
+                if (!rightHandPoint) {
+                    isDrawing = false;
+                    lastPoint = null;
+                    updateCurrentMode('Ready - Show your RIGHT hand');
+                }
+            } else {
+                // No hands detected
+                isDrawing = false;
+                lastPoint = null;
+                updateCurrentMode('Ready - Show your RIGHT hand');
+            }
+
+            canvasCtx.restore();
+        }
+
+        function countFingers(landmarks) {
+            const tipIds = [4, 8, 12, 16, 20];
+            const pipIds = [3, 6, 10, 14, 18];
+            let fingerCount = 0;
+
+            // Simplified thumb detection for a right hand in a mirrored view
+            // The thumb tip (landmark 4) will be to the right of the thumb's base (landmark 3)
+            // when the thumb is extended.
+            if (landmarks[tipIds[0]].x > landmarks[pipIds[0]].x) {
+                fingerCount++;
+            }
+
+            // Loop through the other four fingers (index, middle, ring, pinky)
+            for (let i = 1; i < 5; i++) {
+                // A finger is "up" if its tip's y-coordinate is above its PIP joint's y-coordinate
+                if (landmarks[tipIds[i]].y < landmarks[pipIds[i]].y) {
+                    fingerCount++;
+                }
+            }
+            return fingerCount;
+        }
+
+        function handleGesture(fingerCount, landmarks) {
+            const indexTip = landmarks[8]; // Index finger tip
+            const point = {
+                x: (1 - indexTip.x) * paintCanvas.width, // Flip x-coordinate to match mirrored video
+                y: indexTip.y * paintCanvas.height
+            };
+
+            // Store right hand position
+            rightHandPoint = point;
+
+            // Reset color change timer if not showing 3 fingers
+            if (fingerCount !== 3) {
+                if (colorChangeTimer) {
+                    clearTimeout(colorChangeTimer);
+                    colorChangeTimer = null;
+                }
+                isColorChangeInProgress = false;
+                colorChangeStartTime = null;
+            }
+
+            switch(fingerCount) {
+                case 1:
+                    // Move mode - just track finger position (INDEX FINGER ONLY)
+                    rightHandMode = 'move';
+                    updateCurrentMode('✋ 1 Finger: MOVE MODE - Tracking finger');
+                    isDrawing = false;
+                    lastPoint = point;
+                    break;
+                    
+                case 2:
+                    // Drawing mode (INDEX + MIDDLE fingers typically)
+                    const currentColor = DRAWING_COLORS[currentColorIndex];
+                    updateCurrentMode(`✌️ 2 Fingers: DRAWING MODE - Color: ${getColorName(currentColor)}`);
+
+                    if (isDrawing && lastPoint) {
+                        // Draw smooth line from last point to current point
+                        paintCtx.strokeStyle = currentColor;
+                        paintCtx.lineWidth = 3;
+                        paintCtx.lineCap = 'round';
+                        paintCtx.lineJoin = 'round';
+                        paintCtx.beginPath();
+                        paintCtx.moveTo(lastPoint.x, lastPoint.y);
+                        paintCtx.lineTo(point.x, point.y);
+                        paintCtx.stroke();
+                        
+                        // Add point to current line
+                        currentLine.push({
+                            from: {x: lastPoint.x, y: lastPoint.y},
+                            to: {x: point.x, y: point.y},
+                            color: currentColor,
+                            size: 3
+                        });
+                    } else {
+                        // Start new line
+                        if (currentLine.length > 0) {
+                            drawnLines.push([...currentLine]);
+                            currentLine = [];
+                        }
+                    }
+
+                    isDrawing = true;
+                    lastPoint = point;
+                    break;
+                    
+                case 3:
+                    // Change color mode with 1-second timer
+                    if (!isColorChangeInProgress) {
+                        isColorChangeInProgress = true;
+                        colorChangeStartTime = Date.now();
+                        updateCurrentMode('🤟 3 Fingers: COLOR CHANGE - Hold for 1 second...');
+                        
+                        colorChangeTimer = setTimeout(() => {
+                            currentColorIndex = (currentColorIndex + 1) % DRAWING_COLORS.length;
+                            const newColor = DRAWING_COLORS[currentColorIndex];
+                            updateCurrentMode(`🎨 Color Changed to: ${getColorName(newColor)}`);
+                            
+                            // Save current line if drawing
+                            if (currentLine.length > 0) {
+                                drawnLines.push([...currentLine]);
+                                currentLine = [];
+                            }
+                            
+                            isColorChangeInProgress = false;
+                            colorChangeTimer = null;
+                        }, 1000);
+                    } else {
+                        // Show countdown
+                        const elapsed = Date.now() - colorChangeStartTime;
+                        const remaining = Math.max(0, 1000 - elapsed);
+                        const seconds = (remaining / 1000).toFixed(1);
+                        updateCurrentMode(`🤟 3 Fingers: COLOR CHANGE - ${seconds}s remaining...`);
+                    }
+                    
+                    isDrawing = false;
+                    lastPoint = null;
+                    break;
+                    
+                case 4:
+                    // Clear mode
+                    clearCanvas();
+                    drawnLines = [];
+                    currentLine = [];
+                    updateCurrentMode('🖖 4 Fingers: CLEAR - Canvas cleared');
+                    isDrawing = false;
+                    lastPoint = null;
+                    break;
+                    
+                case 5:
+                    // Undo previous line mode
+                    if (drawnLines.length > 0) {
+                        drawnLines.pop(); // Remove last line
+                        clearCanvas();
+                        redrawAllLines();
+                        updateCurrentMode('🖐️ 5 Fingers: UNDO - Removed last line');
+                    } else {
+                        clearCanvas();
+                        updateCurrentMode('🖐️ 5 Fingers: UNDO - No lines to remove');
+                    }
+                    currentLine = [];
+                    isDrawing = false;
+                    lastPoint = null;
+                    break;
+                    
+                case 0:
+                    // No fingers detected
+                    updateCurrentMode('👋 Show your RIGHT HAND - No fingers detected');
+                    if (currentLine.length > 0) {
+                        drawnLines.push([...currentLine]);
+                        currentLine = [];
+                    }
+                    isDrawing = false;
+                    lastPoint = null;
+                    break;
+                    
+                default:
+                    // Invalid gesture
+                    updateCurrentMode(`❓ ${fingerCount} Fingers: Unknown gesture - Use 1-5 fingers`);
+                    if (currentLine.length > 0) {
+                        drawnLines.push([...currentLine]);
+                        currentLine = [];
+                    }
+                    isDrawing = false;
+                    lastPoint = null;
+                    break;
+            }
+        }
+
+        function getColorName(color) {
+            const colorNames = {
+                '#FF0000': 'Red',
+                '#0000FF': 'Blue', 
+                '#00FF00': 'Green',
+                '#800080': 'Purple',
+                '#FFA500': 'Orange',
+                '#FFD700': 'Gold',
+                '#FF69B4': 'Pink',
+                '#000000': 'Black'
+            };
+            return colorNames[color] || 'Unknown';
+        }
+
+        function redrawAllLines() {
+            for (const line of drawnLines) {
+                for (const segment of line) {
+                    paintCtx.strokeStyle = segment.color;
+                    paintCtx.lineWidth = segment.size;
+                    paintCtx.lineCap = 'round';
+                    paintCtx.lineJoin = 'round';
+                    paintCtx.beginPath();
+                    paintCtx.moveTo(segment.from.x, segment.from.y);
+                    paintCtx.lineTo(segment.to.x, segment.to.y);
+                    paintCtx.stroke();
+                }
+            }
+        }
+
+        function clearCanvas() {
+            paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+        }
+
+        function clearAll() {
+            clearCanvas();
+            drawnLines = [];
+            currentLine = [];
+            updateCurrentMode('Manual Clear - All lines removed');
+        }
+
+        function undoLastLine() {
+            if (drawnLines.length > 0) {
+                drawnLines.pop();
+                clearCanvas();
+                redrawAllLines();
+                updateCurrentMode('Manual Undo - Last line removed');
+            } else {
+                updateCurrentMode('Manual Undo - No lines to remove');
+            }
+        }
+
+        function toggleCamera() {
+            if (cameraActive) {
+                camera.stop();
+                cameraActive = false;
+                updateStatus('Camera stopped', 'demo');
+            } else {
+                camera.start().then(() => {
+                    cameraActive = true;
+                    updateStatus('Camera active - Show your hand!', 'camera');
+                });
+            }
+        }
+
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        function updateCurrentMode(mode) {
+            const currentColor = DRAWING_COLORS[currentColorIndex];
+            const colorName = getColorName(currentColor);
+            document.getElementById('currentMode').innerHTML = 
+                `Current Mode: ${mode}<br><span style="color: ${currentColor};">● Current Color: ${colorName}</span>`;
+        }
+
+        // Save drawing to server
+        async function saveDrawing() {
+            try {
+                const drawingData = {
+                    lines: drawnLines,
+                    colors: DRAWING_COLORS,
+                    canvas_size: {
+                        width: paintCanvas.width,
+                        height: paintCanvas.height
+                    }
+                };
+
+                const response = await fetch('/api/save-drawing', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(drawingData)
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    updateStatus(`Drawing saved: ${result.drawing_id}`, 'camera');
+                } else {
+                    updateStatus(`Save failed: ${result.message}`, 'demo');
+                }
+            } catch (error) {
+                console.error('Failed to save drawing:', error);
+                updateStatus('Save failed - check connection', 'demo');
+            }
+        }
+
+        // Handle keyboard input
+        document.addEventListener('keydown', function(event) {
+            if (event.key.toLowerCase() === 'q') {
+                if (confirm('Are you sure you want to quit the application?')) {
+                    fetch('/shutdown', {method: 'POST'})
+                        .then(() => {
+                            document.body.innerHTML = '<div style="text-align: center; padding: 50px;"><h2>Application shutting down...</h2></div>';
+                        });
+                }
+            } else if (event.key.toLowerCase() === 's') {
+                saveDrawing();
+            }
+        });
+    </script>
+</body>
+</html>
