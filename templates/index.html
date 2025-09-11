@@ -33,8 +33,8 @@
             background-color: #000;
         }
         #videoElement {
-            width: 640px;
-            height: 480px;
+            width: 900px;
+            height: 600px;
             display: block;
             /* Horizontal flip for mirror-like behavior */
             transform: scaleX(-1);
@@ -43,8 +43,8 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 640px;
-            height: 480px;
+            width: 900px;
+            height: 600px;
             pointer-events: none;
             /* Horizontal flip to match video */
             transform: scaleX(-1);
@@ -53,8 +53,8 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 640px;
-            height: 480px;
+            width: 900px;
+            height: 600px;
             pointer-events: none;
         }
         .instructions {
@@ -136,9 +136,8 @@
         <div class="controls">
             <button onclick="clearAll()">Clear All</button>
             <button onclick="undoLastLine()">Undo Last Line</button>
-            <button onclick="saveDrawing()">Save Drawing</button>
             <button onclick="toggleCamera()">Toggle Camera</button>
-            <p><strong>Press 'Q' to quit the application | Press 'S' to save</strong></p>
+            <p><strong>Press 'Q' to quit the application </strong></p>
         </div>
 
         <div class="status camera" id="status">
@@ -222,10 +221,10 @@
             paintCtx = paintCanvas.getContext('2d');
 
             // Set canvas dimensions
-            canvasElement.width = 640;
-            canvasElement.height = 480;
-            paintCanvas.width = 640;
-            paintCanvas.height = 480;
+            canvasElement.width = 900;
+            canvasElement.height = 600;
+            paintCanvas.width = 900;
+            paintCanvas.height = 600;
 
             // Initialize MediaPipe Hands
             hands = new Hands({
@@ -459,20 +458,23 @@
                     break;
                     
                 case 5:
-                    // Undo previous line mode
-                    if (drawnLines.length > 0) {
-                        drawnLines.pop(); // Remove last line
-                        clearCanvas();
-                        redrawAllLines();
-                        updateCurrentMode('🖐️ 5 Fingers: UNDO - Removed last line');
-                    } else {
-                        clearCanvas();
-                        updateCurrentMode('🖐️ 5 Fingers: UNDO - No lines to remove');
-                    }
-                    currentLine = [];
-                    isDrawing = false;
-                    lastPoint = null;
-                    break;
+                    // Undo previous line mode with 1 second delay
+                    updateCurrentMode('🖐️ 5 Fingers: UNDO - Removing last line in 1 second...');
+                    setTimeout(() => {
+                        if (drawnLines.length > 0) {
+                            drawnLines.pop(); // Remove last line
+                            clearCanvas();
+                            redrawAllLines();
+                            updateCurrentMode('🖐️ 5 Fingers: UNDO - Removed last line');
+                        } else {
+                            clearCanvas();
+                            updateCurrentMode('🖐️ 5 Fingers: UNDO - No lines to remove');
+                        }
+                currentLine = [];
+                isDrawing = false;
+                lastPoint = null;
+            }, 1000);
+            break;
                     
                 case 0:
                     // No fingers detected
@@ -538,12 +540,40 @@
             updateCurrentMode('Manual Clear - All lines removed');
         }
 
-        function undoLastLine() {
+        // Undo queue to handle multiple undo requests sequentially
+        const undoQueue = [];
+        let isUndoInProgress = false;
+
+        function processUndoQueue() {
+            if (undoQueue.length === 0) {
+                isUndoInProgress = false;
+                return;
+            }
+            isUndoInProgress = true;
+            // Remove one undo request from queue
+            undoQueue.shift();
             if (drawnLines.length > 0) {
                 drawnLines.pop();
                 clearCanvas();
                 redrawAllLines();
-                updateCurrentMode('Manual Undo - Last line removed');
+                updateCurrentMode('Undo - Last line removed');
+            } else {
+                updateCurrentMode('Undo - No lines to remove');
+            }
+            // Process next undo after 0.8 second delay
+            setTimeout(processUndoQueue, 800);
+        }
+
+        function enqueueUndo() {
+            undoQueue.push(1);
+            if (!isUndoInProgress) {
+                processUndoQueue();
+            }
+        }
+
+        function undoLastLine() {
+            if (drawnLines.length > 0) {
+                enqueueUndo();
             } else {
                 updateCurrentMode('Manual Undo - No lines to remove');
             }
@@ -575,37 +605,7 @@
                 `Current Mode: ${mode}<br><span style="color: ${currentColor};">● Current Color: ${colorName}</span>`;
         }
 
-        // Save drawing to server
-        async function saveDrawing() {
-            try {
-                const drawingData = {
-                    lines: drawnLines,
-                    colors: DRAWING_COLORS,
-                    canvas_size: {
-                        width: paintCanvas.width,
-                        height: paintCanvas.height
-                    }
-                };
 
-                const response = await fetch('/api/save-drawing', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(drawingData)
-                });
-
-                const result = await response.json();
-                if (result.status === 'success') {
-                    updateStatus(`Drawing saved: ${result.drawing_id}`, 'camera');
-                } else {
-                    updateStatus(`Save failed: ${result.message}`, 'demo');
-                }
-            } catch (error) {
-                console.error('Failed to save drawing:', error);
-                updateStatus('Save failed - check connection', 'demo');
-            }
-        }
 
         // Handle keyboard input
         document.addEventListener('keydown', function(event) {
@@ -616,8 +616,6 @@
                             document.body.innerHTML = '<div style="text-align: center; padding: 50px;"><h2>Application shutting down...</h2></div>';
                         });
                 }
-            } else if (event.key.toLowerCase() === 's') {
-                saveDrawing();
             }
         });
     </script>
